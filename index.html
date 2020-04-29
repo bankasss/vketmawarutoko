@@ -1,0 +1,1078 @@
+
+<!DOCTYPE html>
+<!-- saved from url=(0042)https://taremin.github.io/Vket4CircleData/ -->
+<html lang="ja"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>Vket4サークルをTwitterのフォロー・非フォローから探す</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <meta name="description" content="">
+    <meta name="keywords" content="">
+    <meta name="author" content="Taremin">
+    <meta name="copyright" content="Taremin">
+    <meta name="format-detection" content="telephone=no">
+    <meta http-equiv="Cache-Control" content="no-transform">
+    <meta http-equiv="Cache-Control" content="no-siteapp">
+    <link rel="stylesheet" href="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/spectre.min.css">
+    <link rel="stylesheet" href="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/index.css">
+    <script>
+document.addEventListener('DOMContentLoaded', function(e) {
+    document.getElementById('start').addEventListener('click', function(e) {
+        start();
+    }, false);
+    document.getElementById('settings').addEventListener('submit', function(e) {
+        e.preventDefault();
+        if (canStart) {
+            start();
+        }
+    }, false);
+    ratelimit();
+}, false);
+
+async function ratelimit() {
+    const ratelimit = document.getElementById('rate-limit');
+    const api = "https://runkit.io/taremin/vket4-twitter/branches/master";
+
+    const ratelimitData = await fetch(api+'/ratelimit').then(res => res.json());
+    const resources = ratelimitData.resources;
+
+    clearContainer('rate-limit');
+    for (const apiPath of [
+        ["application", "/application/rate_limit_status"],
+        ["friends", "/friends/ids"],
+        ["followers", "/followers/ids"],
+        ["users", "/users/lookup"]
+    ]) {
+        const container = document.createElement('div');
+        const apiData = resources[apiPath[0]][apiPath[1]];
+        container.textContent = `${apiPath[1]}: ${apiData.remaining} / ${apiData.limit}`;
+        ratelimit.appendChild(container);
+    }
+}
+
+async function start() {
+    const api = "https://runkit.io/taremin/vket4-twitter/branches/master";
+    const formdata = new FormData(document.getElementById('settings'));
+    const settings = {};
+    let twitter = document.getElementById('twitter-screenname').value;
+
+    if (twitter.length < 3) {
+        return;
+    }
+
+    if (twitter.slice(0, 1) === '@') {
+        twitter = twitter.slice(1);
+    }
+
+    for(const e of formdata) {
+        settings[e[0]] = e[1];
+    }
+
+    let path = "";
+    switch (settings["twitter-filter"]) {
+        case "follow":
+            path = "/follow/";
+            break;
+        case "follower":
+            path = "/follower/";
+            break;
+        case "ff":
+            path = "/ff/";
+            break;
+        case "fff":
+            path = "/fff/";
+            break;
+        default:
+            throw new Error('invalid twitter filter');
+    }
+    const url = api+path+twitter;
+    //const url = "./Taremin_VR.json";
+    progress();
+    const output = document.getElementById('output');
+    clearContainer('output');
+    output.innerHTML = '読み込み中...';
+
+    const data = await fetch(url).then(res => res.json()).catch(e => {
+        error(e);
+    });
+    idle();
+    console.log(data);
+    const circleByLocation = createCircleDictByLocation(data.circle);
+
+    clearContainer('output');
+    let prevLocation = ["","",""];
+    let container;
+    for (const location of Object.keys(circleByLocation).sort()) {
+        const sublocation = location.split(/\s*-\s+/);
+
+        for (let i = 0; i < 2; ++i) {
+            if (prevLocation[i] !== sublocation[i]) {
+                const subtitle = document.createElement('h'+(i+2));
+                subtitle.textContent = sublocation[i];
+                output.appendChild(subtitle);
+                if (i === 1) {
+                    container = document.createElement('div');
+                    container.classList.add('columns');
+                    output.appendChild(container);
+                }
+            }
+        }
+        prevLocation = sublocation;
+
+        for (const circleId of circleByLocation[location]) {
+            const circle = document.createElement('div');
+            const info = data.circle[circleId];
+
+            const show = [];
+            for (const url of info.twitter) {
+                const twitter = data.twitter[getTwitterScreenName(url)];
+
+                if (!twitter) {
+                    continue;
+                }
+
+                show.push(twitter);
+            }
+
+            const tmp = show.map((tw)=> `<figure class="avatar avatar-x1"><a href="https://twitter.com/${tw.screen_name}"><img src=${tw.profile_image_url_https} title="${tw.name}"/></a></figure>`).join(' ');
+            const header_image = info.header ? `style="background-image: url('${info.header}'); background-size: cover;"` : "";
+            circle.innerHTML = `
+                <div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" ${header_image}>
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="${info.icon}" style="object-fit: cover;"/>
+                        </figure>
+                        <span class="circle-name" title="${info.circle_name}"><a href="${info.url}">${info.circle_name}</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title="${info.description}">${info.description}</div>
+                  <div class="card-footer">
+                    ${tmp}
+                  </div>
+                    <div class="circle-location">
+                        ${sublocation[0]}<br />
+                        ${sublocation[1]} - ${sublocation[2]}
+                  </div>
+                </div>
+            `;
+
+            container.appendChild(circle.children[0]);
+        }
+    }
+
+}
+
+let canStart = true;
+function idle() {
+    document.getElementById('start').disabled = false;
+    canStart = true;
+}
+
+function progress() {
+    document.getElementById('start').disabled = true;
+    canStart = false;
+}
+
+function error(e) {
+    document.getElementById('output').innerHTML = `
+        <div>
+            <span class="label-error">Error<span><br />
+            ${e.message}
+        </div>
+    `;
+    idle();
+}
+
+function clearContainer(id) {
+    const output = document.getElementById(id);
+    while (output.hasChildNodes()) {
+        output.removeChild(output.firstChild)
+    }
+}
+
+function getTwitterScreenName(url) {
+    const tmp = (url.slice(-1) === '/') ? url.slice(0, -1) : url;
+    return tmp.split('/').pop();
+}
+
+function createCircleDictByLocation(circleData) {
+    const dict = {};
+    for (const circleId of Object.keys(circleData)) {
+        const circle = circleData[circleId];
+        if (!dict[circle.location]) {
+            dict[circle.location] = [];
+        }
+        dict[circle.location].push(circleId);
+    }
+    return dict;
+}
+
+    </script>
+</head>
+<body lang="ja">
+<div class="container">
+<h1>Vket4サークルをTwitterのフォロー・非フォローから探す</h1>
+
+<h2>注意事項:</h2>
+<ul>
+  <li>Vケットのデータは最新でない可能性があります。(負荷をかけないようにこちらでVケットのサイトからJSONを生成してそれを参照しているため)</li>
+  <li>鍵アカウントは対象外になります。</li>
+  <li>Twitter API の制限に引っかかりやすいです。(OAuthによるユーザ単位の認証ではなくアプリケーション単位で使用回数が制限されているため)</li>
+  <li>Twitter API の制限は15分ごとにリセットされます。使用できない場合は少し時間をおいて試してみてください。</li>
+</ul>
+
+<h2>Twitter API 使用状況</h2>
+<div id="rate-limit"><div>/application/rate_limit_status: 173 / 180</div><div>/friends/ids: 9 / 15</div><div>/followers/ids: 11 / 15</div><div>/users/lookup: 764 / 900</div></div>
+
+<h2>設定</h2>
+<form id="settings">
+<input type="text" id="twitter-screenname" value="" placeholder="Twitter ID"><br>
+<input type="radio" name="twitter-filter" id="twitter-filter-follow" value="follow" checked=""><label for="twitter-filter-follow">フォローのみ</label><br>
+<input type="radio" name="twitter-filter" id="twitter-filter-follower" value="follower"><label for="twitter-filter-follower">フォロワーのみ</label><br>
+<input type="radio" name="twitter-filter" id="twitter-filter-ff" value="ff"><label for="twitter-filter-ff">フォロー・フォロワー</label><br>
+<input type="radio" name="twitter-filter" id="twitter-filter-fff" value="fff"><label for="twitter-filter-fff">相互フォロー</label>
+</form>
+
+<button id="start">取得</button>
+
+<div id="output"><h2>アバターショーケース</h2><h3>アクア</h3><div class="columns"><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/circle/header_image/1022/medium_5a928d04-906a-4c51-ae28-9747035aa071.png&#39;); background-size: cover;">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_d8064bc8-530c-4264-a38a-6775dccb3729.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="エリィちゃんのお店-Vケット支店-"><a href="https://www.v-market.work/v4/catalog/circle/1022">エリィちゃんのお店-Vケット支店-</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title="VRoidテクスチャほかの販売行っています！">VRoidテクスチャほかの販売行っています！</div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/Elliy_Myrtle"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/U-RU5Mgh_normal.jpg" title="エリィ(Elliy)@Vket4 Avatar Showcase aqua1F"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        アバターショーケース<br>
+                        アクア - 1F
+                  </div>
+                </div><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/circle/header_image/156/medium_08ded3d7-af45-4822-9cf9-354ed4444c9b.png&#39;); background-size: cover;">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_4b97e85a-5796-4830-b970-b502831da6f5.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="めぐみ屋"><a href="https://www.v-market.work/v4/catalog/circle/156">めぐみ屋</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title="素体付きアバター衣装やアクセサリーを販売中！">素体付きアバター衣装やアクセサリーを販売中！</div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/KOUSAKA_MEGUMI"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/U3tEERbc_normal.jpg" title="高坂めぐみ🐰アバターショーケース"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        アバターショーケース<br>
+                        アクア - 3F
+                  </div>
+                </div><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/circle/header_image/1363/medium_ea06ae6d-ea25-4631-93a7-9726756d9475.jpg&#39;); background-size: cover;">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_929bb217-8d4c-4e2d-b439-7416260612dc.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="動く城のフィオのおみせ"><a href="https://www.v-market.work/v4/catalog/circle/1363">動く城のフィオのおみせ</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title="フィオのおみせ！KawaiiCameraやDesktopHiCheese、おむつなど、VR生活にちょっと役立つ色々なものを販売しています。">フィオのおみせ！KawaiiCameraやDesktopHiCheese、おむつなど、VR生活にちょっと役立つ色々なものを販売しています。</div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/phio_alchemist"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/ymK-RMgp_normal.jpg" title="フィオ(Phio)🔜4/29VirtualMarket4"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        アバターショーケース<br>
+                        アクア - 3F
+                  </div>
+                </div></div><h3>グルーン</h3><div class="columns"><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/circle/header_image/178/medium_95a43d4e-0476-4112-a49b-6aec256c754d.png&#39;); background-size: cover;">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_02a81044-4762-49b2-a022-0d61f066a490.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="蒼空の下で"><a href="https://www.v-market.work/v4/catalog/circle/178">蒼空の下で</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title="VRoid Studio向けの「衣装テクスチャ」「コスメ素材」などの各アイテムを頒布しているサークルです。
+
+また、VRoid Studioの使い方をブログや電子書籍で書いたりしています。
+
+「蒼空の下の市場 バーチャルマーケット店」
+https://www.v-market.work/ec/shops/68/detail/
+
+「蒼空の下で booth店」
+https://sky-blue.booth.pm/
+
+当サークルのアイテムの規約は、原則として「Uni-virtual license」か「CC0ライセンス」に準拠しております。">VRoid Studio向けの「衣装テクスチャ」「コスメ素材」などの各アイテムを頒布しているサークルです。
+
+また、VRoid Studioの使い方をブログや電子書籍で書いたりしています。
+
+「蒼空の下の市場 バーチャルマーケット店」
+https://www.v-market.work/ec/shops/68/detail/
+
+「蒼空の下で booth店」
+https://sky-blue.booth.pm/
+
+当サークルのアイテムの規約は、原則として「Uni-virtual license」か「CC0ライセンス」に準拠しております。</div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/sakuman45"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/Q-Mt-Uk2_normal.jpg" title="さくまさん/Vket4🟢アバターショーケースグルーン1F"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        アバターショーケース<br>
+                        グルーン - 1F
+                  </div>
+                </div><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/circle/header_image/1122/medium_367b710c-9a66-46da-ab1d-a663bc78de8b.png&#39;); background-size: cover;">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_502b63ff-1f53-406d-938b-22ad1a40a817.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="YSIY（野菜屋さん）"><a href="https://www.v-market.work/v4/catalog/circle/1122">YSIY（野菜屋さん）</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title="野菜ゆうきの運営するVRoidのメンズコーデのお店です！
+ゴシックアイドル衣装を販売します。">野菜ゆうきの運営するVRoidのメンズコーデのお店です！
+ゴシックアイドル衣装を販売します。</div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/yasai_ichini"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/WzBykW37_normal.jpg" title="野菜ゆうき🥗Vケット4/アバターショーケース/グルーン1F🥗バーチャルお着替え男子"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        アバターショーケース<br>
+                        グルーン - 1F
+                  </div>
+                </div></div><h3>ブラウ</h3><div class="columns"><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/circle/header_image/400/medium_99337dd6-2988-42e5-8033-c1cfee4fa286.png&#39;); background-size: cover;">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_6a468d98-9957-4d65-a6d5-54b278e260a7.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="越互屋（えつごや）"><a href="https://www.v-market.work/v4/catalog/circle/400">越互屋（えつごや）</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title="「セシル変身アプリ」にて作成したVRMモデルを取り扱っています！">「セシル変身アプリ」にて作成したVRMモデルを取り扱っています！</div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/PeppersGhost39"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/PByfNvcU_normal.jpg" title="越∞えつ@Vket4アバターSWCブラウ2階"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        アバターショーケース<br>
+                        ブラウ - 2F
+                  </div>
+                </div><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/avatar_image/image_url/5714/medium_10208183-5324-4f4f-8046-11499ec3da4d.png&#39;); background-size: cover;">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_f5297d08-fdda-4ee1-8c68-a675fd0e6685.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="るーさんのるーむ"><a href="https://www.v-market.work/v4/catalog/circle/1259">るーさんのるーむ</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title=""></div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/Rino8239"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/WA8jK0Ed_normal.jpg" title="るーしっど∞@Vket4 アバターショーケース -ブラウ- 2F"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        アバターショーケース<br>
+                        ブラウ - 2F
+                  </div>
+                </div></div><h3>ルージュ</h3><div class="columns"><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_14a8397f-777f-46a8-8d4c-01ba3e2567b6.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="アトリエミレア"><a href="https://www.v-market.work/v4/catalog/circle/756">アトリエミレア</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title=""></div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/Atelier_Mirea"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/kfYkcSIU_normal.png" title="ミレア@Vket4ショーケースルージュ"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        アバターショーケース<br>
+                        ルージュ - 1F
+                  </div>
+                </div><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/circle/header_image/862/medium_0cb621b8-030c-4a4d-a847-7be0d3f00385.png&#39;); background-size: cover;">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_d71d2c19-9d38-46c3-8725-8c04a7b73c67.jpg" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="ProjectABYSS"><a href="https://www.v-market.work/v4/catalog/circle/862">ProjectABYSS</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title="VRChat想定3Dモデル「Kella (ケラ)」よろしくお願いします！
+
+boothでVTuber北千住千洋（ちひろ）関連グッズや、その他VRChat向け商品も取り扱っています">VRChat想定3Dモデル「Kella (ケラ)」よろしくお願いします！
+
+boothでVTuber北千住千洋（ちひろ）関連グッズや、その他VRChat向け商品も取り扱っています</div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/neko_area"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/Ua6xhcFD_normal.jpg" title="三毛猫△Vket4アバターショーケース ジョーヌ - 3F"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        アバターショーケース<br>
+                        ルージュ - 1F
+                  </div>
+                </div><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/avatar_image/image_url/3379/medium_00e2c098-bc51-438c-8620-0a0cff4c64d2.png&#39;); background-size: cover;">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_88934f82-80d5-411b-b4f7-cb7af1c6b1ef.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="吸血"><a href="https://www.v-market.work/v4/catalog/circle/914">吸血</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title=""></div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/Yenchos_"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/gkH0lKpn_normal.png" title="YENCHOVY"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        アバターショーケース<br>
+                        ルージュ - 1F
+                  </div>
+                </div><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_2c6a0d49-0ebc-4f7b-9b24-9a278413d1bd.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="しらゆり放送部"><a href="https://www.v-market.work/v4/catalog/circle/1402">しらゆり放送部</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title="V向けアプリやアバターを作成しています。
+Vroidテクスチャに対応したcluster対応VRMモデル。">V向けアプリやアバターを作成しています。
+Vroidテクスチャに対応したcluster対応VRMモデル。</div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/ChairpersonLily"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/A6KAKUx-_normal.jpg" title="白百合めしべ＠しらゆり女学園"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        アバターショーケース<br>
+                        ルージュ - 1F
+                  </div>
+                </div></div><h2>デフォルトキューブ</h2><h3>DC-02</h3><div class="columns"><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/circle/header_image/84/medium_f3273110-f711-4a13-925e-abd5921a3d29.png&#39;); background-size: cover;">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_ce69a541-3487-4756-a6fc-913af0150ade.jpg" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="カルテットワークス"><a href="https://www.v-market.work/v4/catalog/circle/84">カルテットワークス</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title="VirtualMarket3から出展者が一部入れ替わり2度目の出展となります。
+今回も全力で頑張るぞぃ">VirtualMarket3から出展者が一部入れ替わり2度目の出展となります。
+今回も全力で頑張るぞぃ</div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/antenakoubou"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/kWohH2uR_normal.jpg" title="ANTENA"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        デフォルトキューブ<br>
+                        DC-02 - Red-03
+                  </div>
+                </div></div><h3>DC-03</h3><div class="columns"><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/circle/header_image/43/medium_b64b12a7-4e13-4013-9541-83de58e805a9.png&#39;); background-size: cover;">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_bae97263-4fd6-4a96-902e-74ef3edf781e.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="Picatrix[ぴかとりくす]作曲家VTuber"><a href="https://www.v-market.work/v4/catalog/circle/43">Picatrix[ぴかとりくす]作曲家VTuber</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title="VRとリアルで活動する作曲家VTuber
+Picatrix(ぴかとりくす)です！
+
+Vケット4では人魚をテーマにした「Metamerfolk」の
+新作パーティクルミュージックプレイヤーを展示！
+
+前作「DeusExMachina」も簡易版を展示しています。
+
+また、ブース内ではPicatrixの楽曲(クロスフェード)
+が聴けるパネルも設置中！">VRとリアルで活動する作曲家VTuber
+Picatrix(ぴかとりくす)です！
+
+Vケット4では人魚をテーマにした「Metamerfolk」の
+新作パーティクルミュージックプレイヤーを展示！
+
+前作「DeusExMachina」も簡易版を展示しています。
+
+また、ブース内ではPicatrixの楽曲(クロスフェード)
+が聴けるパネルも設置中！</div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/moon_tsuky"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/uekjV975_normal.jpg" title="Picatrix🎹Vket4 デフォルトキューブ DC-03 Yellow 作曲家 VTuber"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        デフォルトキューブ<br>
+                        DC-03 - Yellow-02
+                  </div>
+                </div></div><h3>DC-04</h3><div class="columns"><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/circle/header_image/1267/medium_3370d9d5-3aa7-493a-bb66-cbb50c711e48.png&#39;); background-size: cover;">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_44882c44-0e7a-4762-964f-b6d2abcccdf2.jpg" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="Virtual Collection"><a href="https://www.v-market.work/v4/catalog/circle/1267">Virtual Collection</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title=""></div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/V_Colle_"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/WwP2BTMT_normal.jpg" title="Virtual Collection"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        デフォルトキューブ<br>
+                        DC-04 - Green-04
+                  </div>
+                </div></div><h3>DC-05</h3><div class="columns"><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/circle/header_image/1576/medium_c7c0de07-6779-4df4-a4b1-24f6b9bd829b.png&#39;); background-size: cover;">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_4ce7023a-8628-45c6-99c9-988e52ff9061.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="AMOKA"><a href="https://www.v-market.work/v4/catalog/circle/1576">AMOKA</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title="私たちは、VRの世界で活動する音楽グループです。
+vocal：あいぽ / guitar：もいさん / drum：からし明太子
+オリジナル楽曲・MVを、YouTubeとBOOTHにて公開中！
+Vket4開催期間中に、横のステージでライブを行います。
+ぜひご覧ください！">私たちは、VRの世界で活動する音楽グループです。
+vocal：あいぽ / guitar：もいさん / drum：からし明太子
+オリジナル楽曲・MVを、YouTubeとBOOTHにて公開中！
+Vket4開催期間中に、横のステージでライブを行います。
+ぜひご覧ください！</div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/aipo_vrc"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/_oNml4SV_normal.jpg" title="あいぽ🐰Vket4デフォルトキューブ【AMOKA】"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        デフォルトキューブ<br>
+                        DC-05 - Cyan-04
+                  </div>
+                </div></div><h3>DC-07</h3><div class="columns"><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/circle/header_image/552/medium_74ed3398-cdeb-42e3-b2f5-63176844db07.png&#39;); background-size: cover;">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_bf5d08fc-0299-4a88-8ced-dbc38c9071ec.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="VRoid学園"><a href="https://www.v-market.work/v4/catalog/circle/552">VRoid学園</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title="pixiv社が提供する「VRoid Studio」及び、関連サービスの技術交流、創作支援を目的としたユーザーコミュニティです。">pixiv社が提供する「VRoid Studio」及び、関連サービスの技術交流、創作支援を目的としたユーザーコミュニティです。</div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/VRoidSchool"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/scglJfKb_normal.jpg" title="VRoid学園@ファンコミュニティ"></a></figure> <figure class="avatar avatar-x1"><a href="https://twitter.com/mainarutyan"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/MmeCOSuQ_normal.jpg" title="マイナル＠VRoidスタイリスト"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        デフォルトキューブ<br>
+                        DC-07 - Magenta-02
+                  </div>
+                </div><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/circle/header_image/943/medium_ea6ccc50-564f-4844-b5a7-a03426f41388.png&#39;); background-size: cover;">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_5ce3535a-a92c-4c2f-9857-09997e2d1795.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="Studio Qoon"><a href="https://www.v-market.work/v4/catalog/circle/943">Studio Qoon</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title="はじめまして！StudioQOONのムムム40です。
+StudioQOONでは、VRoidStudio製のアバター衣装の制作を中心に3Dモデル全般の制作を行っています。
+かわいい系からかっこいい系、こってり系、セクシー系等々、色々作って行きます。宜しくお願い致しますー。QOON">はじめまして！StudioQOONのムムム40です。
+StudioQOONでは、VRoidStudio製のアバター衣装の制作を中心に3Dモデル全般の制作を行っています。
+かわいい系からかっこいい系、こってり系、セクシー系等々、色々作って行きます。宜しくお願い致しますー。QOON</div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/mumumu401"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/vww0qzaU_normal.jpg" title="mumumu40-Vket4-デフォルトキューブ - DC-07 - Red-01"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        デフォルトキューブ<br>
+                        DC-07 - Red-01
+                  </div>
+                </div></div><h2>ナーサリーライム</h2><h3>クラブ</h3><div class="columns"><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/avatar_image/image_url/1207/medium_cd393698-da22-4110-a41d-1bdac0c34515.png&#39;); background-size: cover;">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_b3a39764-aa9d-4998-9876-adf0f054130f.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="Minuet_Doll"><a href="https://www.v-market.work/v4/catalog/circle/378">Minuet_Doll</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title=""></div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/Minuet_Doll"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/vG0SGscX_normal.jpg" title="Minuet_Doll💜💛依頼OK📝MD_VTMV企画📽️"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        ナーサリーライム<br>
+                        クラブ - 欲しがりの切り株広場
+                  </div>
+                </div></div><h3>スペード</h3><div class="columns"><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/circle/header_image/174/medium_c6b60548-fd10-4c70-9a73-9bc14dcdbaf1.png&#39;); background-size: cover;">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_cd39e64e-97db-4e89-af56-fd77652dc695.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="えびのわた"><a href="https://www.v-market.work/v4/catalog/circle/174">えびのわた</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title="VRoid用のテクスチャや自作の３D小物などを展示しています。">VRoid用のテクスチャや自作の３D小物などを展示しています。</div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/EviMusuvi"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/aQuY9WnK_normal.jpg" title="えび結び＠Vket4ナーサリーライム/スペード"></a></figure> <figure class="avatar avatar-x1"><a href="https://twitter.com/watayukihii"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/c3c2WffG_normal.jpg" title="綿雪ひぃ❄️Vket4ナーサリーライム -スペード-"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        ナーサリーライム<br>
+                        スペード - ちぐはぐ鏡の化粧台
+                  </div>
+                </div></div><h3>ハート</h3><div class="columns"><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/circle/header_image/62/medium_13bf1d87-4525-4063-bb64-8545f607a023.png&#39;); background-size: cover;">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_939765c9-dcef-43ef-8fbe-99b434a2fdb0.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="はむねこおおととろ"><a href="https://www.v-market.work/v4/catalog/circle/62">はむねこおおととろ</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title="おらむ もゆ しぃけぇ 三人の合同サークル『はむねこおおとろ』です！
+商品の詳細、Twitterなどの情報は紐づけされたホームページをご覧ください。 https://oramuuu.wixsite.com/hamunekoootoro">おらむ もゆ しぃけぇ 三人の合同サークル『はむねこおおとろ』です！
+商品の詳細、Twitterなどの情報は紐づけされたホームページをご覧ください。 https://oramuuu.wixsite.com/hamunekoootoro</div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/ramu_ramu_FF14"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/mXkkyJgu_normal.jpg" title="Oramu.@Vket4はむねこおおとろ"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        ナーサリーライム<br>
+                        ハート - 食べ過ぎお菓子の道
+                  </div>
+                </div></div><h2>ワールドエンド・ユートピア</h2><h3>オスカー</h3><div class="columns"><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/circle/header_image/614/medium_9bdf2ee5-c5a9-4029-b92d-ffce6df12b2d.png&#39;); background-size: cover;">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_1aacc730-f198-4315-83a7-55457ad3047c.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="制作：ミッコちゃん"><a href="https://www.v-market.work/v4/catalog/circle/614">制作：ミッコちゃん</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title="人類が滅亡した世界。
+神にも等しい存在が
+異世界から召喚したのは
+1人の -普通じゃない- 少女だった。
+
+（※かわいいアバター配布します）">人類が滅亡した世界。
+神にも等しい存在が
+異世界から召喚したのは
+1人の -普通じゃない- 少女だった。
+
+（※かわいいアバター配布します）</div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/mikkohietala"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/PkHq_OPp_normal.jpg" title="ミッコちゃん@Vket4：ワールドエンド⇒オスカー"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        ワールドエンド・ユートピア<br>
+                        オスカー - 追憶のモノリス
+                  </div>
+                </div></div><h3>シエラ</h3><div class="columns"><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_2673ade9-d2ba-457a-867d-5e78932875a9.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="Studio Alert"><a href="https://www.v-market.work/v4/catalog/circle/1565">Studio Alert</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title=""></div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/194_alert"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/boBgam0W_normal.jpg" title="あらーと∞@加速モード"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        ワールドエンド・ユートピア<br>
+                        シエラ - 流転する広場
+                  </div>
+                </div><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/avatar_image/image_url/5347/medium_c660a380-b8af-4d30-bba2-e853bade4f77.png&#39;); background-size: cover;">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_82ddfd50-6d2c-400d-808d-eb51c393b7bc.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="うたたね書店"><a href="https://www.v-market.work/v4/catalog/circle/823">うたたね書店</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title=""></div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/Chitose_utatane"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/LuDSKzcE_normal.jpg" title="千歳ゆうり"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        ワールドエンド・ユートピア<br>
+                        シエラ - 面影通り
+                  </div>
+                </div></div><h3>ジュリエット</h3><div class="columns"><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/circle/header_image/881/medium_de17abe2-b0f8-4a2d-95c5-1e37c133ec7d.png&#39;); background-size: cover;">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_73bb12f8-d4ec-4b90-829c-812ef43f51f3.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="プロメ亭"><a href="https://www.v-market.work/v4/catalog/circle/881">プロメ亭</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title="VRoid用の衣装テクスチャや3Dモデルの小物を作成して、BOOTHをメインに公開しています。">VRoid用の衣装テクスチャや3Dモデルの小物を作成して、BOOTHをメインに公開しています。</div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/NO2J712"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/miJRCHz1_normal.jpg" title="ららるー@Vket4ワールドエンド-ジュリエット"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        ワールドエンド・ユートピア<br>
+                        ジュリエット - 破滅の残り香
+                  </div>
+                </div><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/default_user_icon.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="nullの雨音"><a href="https://www.v-market.work/v4/catalog/circle/510">nullの雨音</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title=""></div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/KouuAo"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xeSW3yTd_normal.jpg" title="紅雨蒼＠Vket4-WEU"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        ワールドエンド・ユートピア<br>
+                        ジュリエット - 苔錆びた墓場
+                  </div>
+                </div></div><h3>ノベンバー</h3><div class="columns"><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/circle/header_image/1119/medium_44486181-dee8-4366-bc23-1031746b9551.png&#39;); background-size: cover;">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_f47d3008-3d5e-4ff5-bb86-ff50f0372e8d.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="ほびわんぷらねっと"><a href="https://www.v-market.work/v4/catalog/circle/1119">ほびわんぷらねっと</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title="シェーダーやボクセルモデルをつくってます">シェーダーやボクセルモデルをつくってます</div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/hobi_ik"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/m8oJ4H_C_normal.jpg" title="ほびわん"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        ワールドエンド・ユートピア<br>
+                        ノベンバー - 流転する広場
+                  </div>
+                </div></div><h2>阿頼屋敷</h2><h3>灯</h3><div class="columns"><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/circle/header_image/334/medium_92bb9659-56dc-4487-9342-044593a6a597.png&#39;); background-size: cover;">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_cbf92058-04d6-4c33-be3b-9765647d8bdb.PNG" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="mio3works"><a href="https://www.v-market.work/v4/catalog/circle/334">mio3works</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title="mio3io
+かわいいアバターの展示と販売
+BOOTHからご購入できます">mio3io
+かわいいアバターの展示と販売
+BOOTHからご購入できます</div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/mio3io"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/bWOfPC4f_normal.png" title="mio⛩️Vケ4阿頼屋敷灯"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        阿頼屋敷<br>
+                        灯 - 三日月
+                  </div>
+                </div><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/circle/header_image/754/medium_600aa291-d85b-4246-8d8d-c4455b9d2772.png&#39;); background-size: cover;">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_4be8aa24-00ff-4c22-b3a3-609a4cdf3e93.jpg" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="赤羽根蟻の衣装部屋"><a href="https://www.v-market.work/v4/catalog/circle/754">赤羽根蟻の衣装部屋</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title=""></div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/ki_motor"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/H1jdk9f1_normal.png" title="赤羽根@VRoid衣装制作"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        阿頼屋敷<br>
+                        灯 - 三日月
+                  </div>
+                </div><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/avatar_image/image_url/3400/medium_1dfa0f40-2684-42b9-bf0f-2268571298e9.png&#39;); background-size: cover;">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_72a3e1ae-753e-409e-81d1-12651324911c.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="Evolution Loop"><a href="https://www.v-market.work/v4/catalog/circle/268">Evolution Loop</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title="3Dモデル作ってるよ！ホｫｲ!ホｫｲ！">3Dモデル作ってるよ！ホｫｲ!ホｫｲ！</div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/Multi_Evolve"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/YrhbEAld_normal.png" title="MμLT1"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        阿頼屋敷<br>
+                        灯 - 丸に鱗
+                  </div>
+                </div><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/circle/header_image/299/medium_5e33b17b-7662-4125-a90a-748b6b1fe0bd.png&#39;); background-size: cover;">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_1d2bab65-ba35-4a08-8c1e-50e26fbe10ea.JPG" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="QuantumDot"><a href="https://www.v-market.work/v4/catalog/circle/299">QuantumDot</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title="VRoid用テクスチャと3Dキャラモデルを販売してます！">VRoid用テクスチャと3Dキャラモデルを販売してます！</div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/KjmCh2s"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/jDJlr1T5_normal.jpg" title="slip@創作活動"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        阿頼屋敷<br>
+                        灯 - 錦鯉
+                  </div>
+                </div></div><h3>蓮</h3><div class="columns"><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_d0ba1d42-f75e-4bfd-bb87-094ac2037aa3.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="九尾玩具堂"><a href="https://www.v-market.work/v4/catalog/circle/80">九尾玩具堂</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title=""></div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/peguu_vr"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/gqXzfgLU_normal.jpg" title="ぺぐぅ＠ VRC写真とモデリング"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        阿頼屋敷<br>
+                        蓮 - 波かもめ
+                  </div>
+                </div></div><h3>鯉</h3><div class="columns"><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_c214c125-a9e3-4908-9904-c944a9951abe.jpg" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="にゃんぱすふぁんくらぶ"><a href="https://www.v-market.work/v4/catalog/circle/643">にゃんぱすふぁんくらぶ</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title=""></div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/b0xp2"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/aVPOPNlm_normal.jpg" title="一箱さん⛩️(BOXP)@Vket4阿頼屋敷"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        阿頼屋敷<br>
+                        鯉 - 帯兜
+                  </div>
+                </div></div><h3>鶴</h3><div class="columns"><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_ef3975b6-43fb-4aad-b191-66113bd72ec7.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="ここなふぁくとりー"><a href="https://www.v-market.work/v4/catalog/circle/966">ここなふぁくとりー</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title="VRoid Studio用のテクスチャを配布・販売しています。3Dアクセサリー等の小物も少しずつ増やしてます！">VRoid Studio用のテクスチャを配布・販売しています。3Dアクセサリー等の小物も少しずつ増やしてます！</div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/fox_kokona"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/yI7OlgnO_normal.jpg" title="ここなふぁくとりー＠vket4阿頼屋敷"></a></figure> <figure class="avatar avatar-x1"><a href="https://twitter.com/TewiEwi_no96"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/Nv73Jc46_normal.jpg" title="フリック@はぐれプログラマー"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        阿頼屋敷<br>
+                        鶴 - 蔵造り
+                  </div>
+                </div><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/circle/header_image/448/medium_792d66be-9cee-4ef8-a400-379c4e37942d.png&#39;); background-size: cover;">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_82d201d2-627a-40ab-bdf0-98bddd6f9029.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="バーチャル職人　うぃりあむ"><a href="https://www.v-market.work/v4/catalog/circle/448">バーチャル職人　うぃりあむ</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title="オシャレでかわいい洋風の服・小物を作っています！
+
+今回は大正浪漫な雰囲気のお店にしてみました。
+外からはハイカラなウィンドウショッピング、
+中からは浅草に実在した塔「凌雲閣」を望むカフェ。
+モダンガールになったつもりでおしゃれ空間をお楽しみください。">オシャレでかわいい洋風の服・小物を作っています！
+
+今回は大正浪漫な雰囲気のお店にしてみました。
+外からはハイカラなウィンドウショッピング、
+中からは浅草に実在した塔「凌雲閣」を望むカフェ。
+モダンガールになったつもりでおしゃれ空間をお楽しみください。</div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/WilliamJonesWU"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/hIf3iKGA_normal.jpg" title="うぃりあむ　動画制作依頼受付中"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        阿頼屋敷<br>
+                        鶴 - 錦鯉
+                  </div>
+                </div></div><h2>電脳都市ミラビリス</h2><h3>Flor</h3><div class="columns"><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_823382c2-d1a8-428e-93f3-b6927d0af2ee.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="イケパラ"><a href="https://www.v-market.work/v4/catalog/circle/295">イケパラ</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title=""></div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/HakusiVRC"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/1ljZ3msA_normal.jpg" title="白紙さん"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        電脳都市ミラビリス<br>
+                        Flor - √Rose
+                  </div>
+                </div></div><h3>Fruta</h3><div class="columns"><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_08b3b6c0-8568-495a-8823-81c388c275cd.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="りっきー・わーるど"><a href="https://www.v-market.work/v4/catalog/circle/574">りっきー・わーるど</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title=""></div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/rikky0200"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/BZiQ41vh_normal.jpg" title="Rikky.@バーチャルWebデザイナー"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        電脳都市ミラビリス<br>
+                        Fruta - √Gypsophila
+                  </div>
+                </div></div><h3>Hojal</h3><div class="columns"><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/circle/header_image/1436/medium_909b3480-098a-4efa-8368-e634ed79542c.png&#39;); background-size: cover;">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_b80c8ef8-4467-48eb-a3c5-014286c8f8a7.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="いーすと"><a href="https://www.v-market.work/v4/catalog/circle/1436">いーすと</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title="オリジナルアバター【Leona / レオナ】を出展しています。
+
+Twitter:@EastNau">オリジナルアバター【Leona / レオナ】を出展しています。
+
+Twitter:@EastNau</div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/EastNau"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/D1crpID2_normal.jpg" title="いーすと＠Vket4電脳都市ミラビリス"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        電脳都市ミラビリス<br>
+                        Hojal - √Gypsophila
+                  </div>
+                </div></div><h3>Tallo</h3><div class="columns"><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/circle/header_image/321/medium_fdae6c3e-22f6-4add-98fa-154fbbc18a05.png&#39;); background-size: cover;">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/xsmall_18537ca5-5294-41f4-8d8a-ff4267c15cee.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="活劇パレット"><a href="https://www.v-market.work/v4/catalog/circle/321">活劇パレット</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title="近未来のストリートショップをイメージしたブースにオリジナルアバターやアパレルモデルの試作品を展示しています！
+今回はゲストにカンゼンさんをお招きしました！">近未来のストリートショップをイメージしたブースにオリジナルアバターやアパレルモデルの試作品を展示しています！
+今回はゲストにカンゼンさんをお招きしました！</div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/c_o_b_a_l"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/Hj7KYhWC_normal.jpg" title="こばる＠Vket4ミラビリスTallo"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        電脳都市ミラビリス<br>
+                        Tallo - √Cymbidium
+                  </div>
+                </div><div class="column col-3 card circle-card">
+                  <div class="card-header circle-header">
+                    <div style="background-color: rgba(0,0,0,0.5)">
+                        <div class="card-title h5 outline-character">
+                        <figure class="avatar avatar-xl circle-icon">
+                            <img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/default_user_icon.png" style="object-fit: cover;">
+                        </figure>
+                        <span class="circle-name" title="あきらのおみせ"><a href="https://www.v-market.work/v4/catalog/circle/1439">あきらのおみせ</a></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div class="card-body circle-description" title=""></div>
+                  <div class="card-footer">
+                    <figure class="avatar avatar-x1"><a href="https://twitter.com/sh_akira"><img src="./Vket4サークルをTwitterのフォロー・非フォローから探す_files/QgMCRZRQ_normal.png" title="あきら☎︎🗾＠ばもきゃウィーク4/29～5/5 固定ツイ参照"></a></figure>
+                  </div>
+                    <div class="circle-location">
+                        電脳都市ミラビリス<br>
+                        Tallo - √Rose
+                  </div>
+                </div></div></div>
+
+</div>
+
+</body></html>
