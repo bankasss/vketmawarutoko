@@ -4,7 +4,7 @@
 <html lang="ja"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
     
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <title>Vket4サークルをTwitterのフォロー・非フォローから探す</title>
+    <title>Vket4サークル行きたいところ</title>
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
     <meta name="description" content="">
     <meta name="keywords" content="">
@@ -19,29 +19,6 @@
 </head>
 <body lang="ja">
 <div class="container">
-<h1>Vket4サークルをTwitterのフォロー・非フォローから探す</h1>
-
-<h2>注意事項:</h2>
-<ul>
-  <li>Vケットのデータは最新でない可能性があります。(負荷をかけないようにこちらでVケットのサイトからJSONを生成してそれを参照しているため)</li>
-  <li>鍵アカウントは対象外になります。</li>
-  <li>Twitter API の制限に引っかかりやすいです。(OAuthによるユーザ単位の認証ではなくアプリケーション単位で使用回数が制限されているため)</li>
-  <li>Twitter API の制限は15分ごとにリセットされます。使用できない場合は少し時間をおいて試してみてください。</li>
-</ul>
-
-<h2>Twitter API 使用状況</h2>
-<div id="rate-limit"><div>/application/rate_limit_status: 173 / 180</div><div>/friends/ids: 9 / 15</div><div>/followers/ids: 11 / 15</div><div>/users/lookup: 764 / 900</div></div>
-
-<h2>設定</h2>
-<form id="settings">
-<input type="text" id="twitter-screenname" value="" placeholder="Twitter ID"><br>
-<input type="radio" name="twitter-filter" id="twitter-filter-follow" value="follow" checked=""><label for="twitter-filter-follow">フォローのみ</label><br>
-<input type="radio" name="twitter-filter" id="twitter-filter-follower" value="follower"><label for="twitter-filter-follower">フォロワーのみ</label><br>
-<input type="radio" name="twitter-filter" id="twitter-filter-ff" value="ff"><label for="twitter-filter-ff">フォロー・フォロワー</label><br>
-<input type="radio" name="twitter-filter" id="twitter-filter-fff" value="fff"><label for="twitter-filter-fff">相互フォロー</label>
-</form>
-
-<button id="start">取得</button>
 
 <div id="output"><h2>アバターショーケース</h2><h3>アクア</h3><div class="columns"><div class="column col-3 card circle-card">
                   <div class="card-header circle-header" style="background-image: url(&#39;https://storage.googleapis.com/vket-site-storage/uploads/circle/header_image/1022/medium_5a928d04-906a-4c51-ae28-9747035aa071.png&#39;); background-size: cover;">
